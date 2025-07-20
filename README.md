@@ -14,21 +14,17 @@ A modular, production-grade DeFi protocol composed of the `AlpyToken`, `AlpyStak
 
 ## Architecture
 
-User
-│
-├──> AlpyToken: ERC20 token for rewards, governance
-│
-├──> AlpyStaking: Stakes AlpyToken (+ optional second ERC20)
-│ └──> Feeds staked balance to AlpyDAO for voting power
-│
-├──> AlpyDAO: Lightweight proposal + voting system
-│
-└──> LendingPool: Handles multi-asset supply/borrow logic
-└──> Supports dynamic interest accrual and liquidation
-
-diff
-Copy
-Edit
+User  
+ │  
+ ├──> AlpyToken: ERC20 token for rewards, governance  
+ │  
+ ├──> AlpyStaking: Stakes AlpyToken (+ optional second ERC20)  
+ │     └──> Feeds staked balance to AlpyDAO for voting power  
+ │  
+ ├──> AlpyDAO: Lightweight proposal + voting system  
+ │  
+ └──> LendingPool: Handles multi-asset supply/borrow logic  
+       └──> Supports dynamic interest accrual and liquidation  
 
 ## Features
 
@@ -73,25 +69,33 @@ Edit
 
 ## Deployment
 
-source .env
-forge script script/DeployAll.s.sol:DeployAll \
-  --rpc-url $SEPOLIA_RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast \
-  --chain-id 11155111
+source .env  
+forge script script/DeployAll.s.sol:DeployAll \  
+  --rpc-url $SEPOLIA_RPC_URL \  
+  --private-key $PRIVATE_KEY \  
+  --broadcast \  
+  --chain-id 31337
 
-## Testing
+## Testing Strategy
+
+Each core component of AlpyProtocol originated as an independent module with its own repository and dedicated test suite. These include:
+
+- `AlpyToken`: ERC20 token module
+- `AlpyStaking`: Dual-token staking and rewards
+- `AlpyDAO`: Lightweight on-chain governance
+- `LendingPool`: Multi-token lending and liquidation engine
+
+All contracts were originally developed and tested in isolation using Foundry’s unit testing framework. Their logic is fully validated through dedicated test files, including edge case handling, reverts, and event checks.
+
+The `DAOFlow.t.sol` file provides protocol-level integration testing. It verifies that all components work together correctly when deployed and wired via the `DAOFactory`.
+
+To run all tests:
 
 forge test -vvvv
 
-Includes integration-level tests for full DAO lifecycle and LendingPool edge cases:
-- Reward accrual
-- Governance proposal flow
-- Liquidation scenarios
-- Interest accrual on borrow/supply
-- Factory deployment sanity
+## Local Deployment (Anvil)
 
-## Anvil Deployment (Local)
+These addresses are ephemeral and reset with each Anvil session.
 
 - AlpyToken: 0xa16E02E87b7454126E5E10d957A927A7F5B5d2be  
 - AlpyStaking: 0xB7A5bd0345EF1Cc5E66bf61BdeC17D2461fBd968  
@@ -100,18 +104,22 @@ Includes integration-level tests for full DAO lifecycle and LendingPool edge cas
 
 ## File Structure
 
-src/
+src/  
   AlpyToken.sol  
   AlpyStaking.sol  
   AlpyDAO.sol  
   LendingPool.sol  
   DAOFactory.sol  
 
-script/
+script/  
   DeployAll.s.sol  
 
-test/
-  DAOFlow.t.sol
+test/  
+  AlpyToken.t.sol  
+  AlpyStaking.t.sol  
+  AlpyDAO.t.sol  
+  LendingPool.t.sol  
+  DAOFlow.t.sol  
 
 ## Security Notes
 
@@ -128,6 +136,7 @@ test/
 - Introduce on-chain governance for interest rate tuning
 - Oracle integration for price feeds and liquidation thresholds
 - Frontend + Subgraph integration
+- AddAsset and RemoveAsset functions to add or remove ERC20 tokens
 
 ## License
 
