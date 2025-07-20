@@ -91,7 +91,7 @@ Includes integration-level tests for full DAO lifecycle and LendingPool edge cas
 - Interest accrual on borrow/supply
 - Factory deployment sanity
 
-## Sepolia Deployment (Live)
+## Anvil Deployment (Local)
 
 - AlpyToken: 0xa16E02E87b7454126E5E10d957A927A7F5B5d2be  
 - AlpyStaking: 0xB7A5bd0345EF1Cc5E66bf61BdeC17D2461fBd968  
