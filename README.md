@@ -1,153 +1,134 @@
-# AlpyDAO
+# AlpyProtocol
 
-AlpyDAO is a minimal on-chain DAO system built with Foundry. It includes a custom token (`AlpyToken`), a staking contract (`AlpyStaking`), and a governance contract (`AlpyDAO`). Users stake tokens to gain voting power and vote on proposals that execute arbitrary on-chain actions.
+A modular, production-grade DeFi protocol composed of the `AlpyToken`, `AlpyStaking`, `AlpyDAO`, and `LendingPool` contracts, wired together via a `DAOFactory` for streamlined deployment. Built with Foundry, this system demonstrates a complete on-chain governance + staking + lending architecture using ERC20 tokens.
 
----
+## Overview
 
-## ✦ Contracts Overview
+- `AlpyToken`: ERC20 utility token used across the system.
+- `AlpyStaking`: Staking contract for reward emission and reputation weighting.
+- `AlpyDAO`: Simple governance contract wired to staking and token balances.
+- `LendingPool`: A robust multi-token lending/borrowing protocol with dynamic interest accrual and liquidation.
+- `DAOFactory`: Factory that deploys and links all components in one transaction.
+- `DeployAll.s.sol`: Foundry script to deploy entire protocol stack.
+- `DAOFlow.t.sol`: Unified test suite for full integration coverage.
+
+## Architecture
+
+User
+│
+├──> AlpyToken: ERC20 token for rewards, governance
+│
+├──> AlpyStaking: Stakes AlpyToken (+ optional second ERC20)
+│ └──> Feeds staked balance to AlpyDAO for voting power
+│
+├──> AlpyDAO: Lightweight proposal + voting system
+│
+└──> LendingPool: Handles multi-asset supply/borrow logic
+└──> Supports dynamic interest accrual and liquidation
+
+diff
+Copy
+Edit
+
+## Features
+
+- ERC20-based governance and staking
+- Dual-token staking with reward distribution
+- Lending and borrowing with:
+  - Dynamic interest rate model
+  - Collateral ratio checks
+  - Liquidation logic
+- Factory-based deployment for clean environment setup
+- All contracts tested with Foundry
+- Minimal dependencies and tightly scoped architecture
+
+## Contracts
 
 ### AlpyToken.sol
-
-A standard ERC20 token used for staking and governance.
-
-```solidity
-contract AlpyToken is ERC20 {
-    constructor() ERC20("AlpyToken", "AT") {
-        _mint(msg.sender, 1_000_000 ether);
-    }
-}
-```
+- Standard ERC20
+- Minted once to deployer
+- No public mint function (cleaner production model)
 
 ### AlpyStaking.sol
-
-Handles staking logic, reward rate, and returns voting power to the DAO.
-
-```solidity
-constructor(address _stakingToken, address _rewardToken, uint256 _rewardRate) {
-    stakingToken = IERC20(_stakingToken);
-    rewardToken = IERC20(_rewardToken);
-    rewardRate = _rewardRate;
-    lastUpdateTime = block.timestamp;
-}
-```
-
-Includes:
-- `stakeTokens(uint256 amount)`
-- `unstakeTokens(uint256 amount)`
-- `claimRewards()`
-- `getVotes(address user)`
-- `setDao(address _dao)`
+- Supports staking any two ERC20 tokens
+- Emits rewards over time
+- Tracks staking balances and accrued rewards
+- Wired into DAO for voting power
 
 ### AlpyDAO.sol
+- Allows proposal creation and voting
+- Weighted voting by staked amount
+- Tied to AlpyStaking for voter eligibility
 
-Core DAO contract that enables:
-- Proposal creation
-- Voting using staked tokens
-- Execution of successful proposals
+### LendingPool.sol
+- Supply, borrow, repay, withdraw, liquidate
+- Accrues interest based on time and utilization
+- Multi-token support via mappings
+- Fully self-contained with no reliance on oracles
 
-```solidity
-constructor(address _stakingContract, uint256 _votingPeriod) {
-    staking = AlpyStaking(_stakingContract);
-    votingPeriod = _votingPeriod;
-}
-```
+### DAOFactory.sol
+- Deploys `AlpyToken`, `AlpyStaking`, `AlpyDAO`, and `LendingPool`
+- Wires contracts together correctly
+- Returns all deployed addresses
 
-Includes:
-- `createProposal(...)`
-- `vote(...)`
-- `executeProposal(...)`
+## Deployment
 
----
+source .env
+forge script script/DeployAll.s.sol:DeployAll \
+  --rpc-url $SEPOLIA_RPC_URL \
+  --private-key $PRIVATE_KEY \
+  --broadcast \
+  --chain-id 11155111
 
-## ✦ Deployment
+## Testing
 
-Ensure Anvil is running:
+forge test -vvvv
 
-```bash
-anvil
-```
+Includes integration-level tests for full DAO lifecycle and LendingPool edge cases:
+- Reward accrual
+- Governance proposal flow
+- Liquidation scenarios
+- Interest accrual on borrow/supply
+- Factory deployment sanity
 
-Then deploy all components with:
+## Sepolia Deployment (Live)
 
-```bash
-forge script script/DeployAll.s.sol --broadcast --fork-url http://127.0.0.1:8545
-```
+- AlpyToken: 0xa16E02E87b7454126E5E10d957A927A7F5B5d2be  
+- AlpyStaking: 0xB7A5bd0345EF1Cc5E66bf61BdeC17D2461fBd968  
+- AlpyDAO: 0xeEBe00Ac0756308ac4AaBfD76c05c4F3088B8883  
+- LendingPool: 0x10C6E9530F1C1AF873a391030a1D9E8ed0630D26  
 
-What it does:
-- Deploys `AlpyToken`
-- Deploys `AlpyStaking` using `AlpyToken`
-- Deploys `AlpyDAO` using `AlpyStaking`
-- Sets the DAO address inside the staking contract
-- Stakes 1000 ALPY tokens
+## File Structure
 
----
+src/
+  AlpyToken.sol  
+  AlpyStaking.sol  
+  AlpyDAO.sol  
+  LendingPool.sol  
+  DAOFactory.sol  
 
-## ✦ Submitting a Proposal
+script/
+  DeployAll.s.sol  
 
-Once deployed, submit a proposal like this:
+test/
+  DAOFlow.t.sol
 
-```bash
-forge script script/SubmitProposal.s.sol --broadcast --fork-url http://127.0.0.1:8545
-```
+## Security Notes
 
-Proposal details:
-- Target: `AlpyStaking` contract
-- Function: `setRewardRate(5e18)`
-- Description: "Change reward rate to 5 ALPY/sec"
+- No timelock or delay on DAO execution
+- Interest rates are internal; no oracle manipulation risk
+- DAO is minimal — proposals are text-only, not executable
+- Contracts assume standard 18-decimal ERC20 tokens
+- Production usage requires audits + guard extensions
 
----
+## Future Improvements
 
-## ✦ Additional Staking
+- Add executable proposal support to AlpyDAO
+- Implement role-based access modules
+- Introduce on-chain governance for interest rate tuning
+- Oracle integration for price feeds and liquidation thresholds
+- Frontend + Subgraph integration
 
-To stake more tokens from the deployer:
+## License
 
-```bash
-forge script script/StakeAgain.s.sol --broadcast --fork-url http://127.0.0.1:8545
-```
-
----
-
-## ✦ Local Setup
-
-```bash
-forge install
-forge build
-forge test
-```
-
-To get your deployer address from the private key:
-
-```bash
-cast wallet address --private-key $PRIVATE_KEY
-```
-
----
-
-## ✦ Testing Notes
-
-This system has been fully tested manually using:
-- Anvil fork
-- Full deployment
-- Proposal submission
-- Voting
-- Execution
-
-If needed, automated tests are available in a single unified test file (`AlpyDAOTest.t.sol`) and can be expanded further.
-
----
-
-## ✦ License
-
-```
-MIT License
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the “Software”), to deal
-in the Software without restriction...
-```
-
----
-
-## ✦ Author
-
-Built and maintained by [Alpy16](https://github.com/Alpy16)
+MIT
