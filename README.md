@@ -1,143 +1,91 @@
-# AlpyProtocol
+# Alpy FundMe — Decentralized Crowdfunding on Ethereum
 
-A modular, production-grade DeFi protocol composed of the `AlpyToken`, `AlpyStaking`, `AlpyDAO`, and `LendingPool` contracts, wired together via a `DAOFactory` for streamlined deployment. Built with Foundry, this system demonstrates a complete on-chain governance + staking + lending architecture using ERC20 tokens.
+[![Foundry](https://img.shields.io/badge/Forged%20with-Foundry-blue)](https://github.com/foundry-rs/foundry)  
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Overview
+About,
 
-- `AlpyToken`: ERC20 utility token used across the system.
-- `AlpyStaking`: Staking contract for reward emission and reputation weighting.
-- `AlpyDAO`: Simple governance contract wired to staking and token balances.
-- `LendingPool`: A robust multi-token lending/borrowing protocol with dynamic interest accrual and liquidation.
-- `DAOFactory`: Factory that deploys and links all components in one transaction.
-- `DeployAll.s.sol`: Foundry script to deploy entire protocol stack.
-- `DAOFlow.t.sol`: Unified test suite for full integration coverage.
 
-## Architecture
+Alpy FundMe is a decentralized crowdfunding smart contract built on Ethereum.
+This project was developed as part of the Cyfrin Updraft Solidity and Foundry bootcamp.
 
-User  
- │  
- ├──> AlpyToken: ERC20 token for rewards, governance  
- │  
- ├──> AlpyStaking: Stakes AlpyToken (+ optional second ERC20)  
- │     └──> Feeds staked balance to AlpyDAO for voting power  
- │  
- ├──> AlpyDAO: Lightweight proposal + voting system  
- │  
- └──> LendingPool: Handles multi-asset supply/borrow logic  
-       └──> Supports dynamic interest accrual and liquidation  
+Users can fund the contract with ETH, and the contract owner can withdraw accumulated funds.
+ETH to USD conversion is powered by Chainlink price feeds.
 
-## Features
 
-- ERC20-based governance and staking
-- Dual-token staking with reward distribution
-- Lending and borrowing with:
-  - Dynamic interest rate model
-  - Collateral ratio checks
-  - Liquidation logic
-- Factory-based deployment for clean environment setup
-- All contracts tested with Foundry
-- Minimal dependencies and tightly scoped architecture
 
-## Contracts
+Features:  
+- Fund contract with ETH  
+- USD-denominated minimum contribution (5 USD)  
+- Restricted withdrawals (only owner)  
+- Optimized withdrawal function  
+- Deployment to Sepolia testnet  
+- Comprehensive unit and integration tests using Foundry  
+- Automated deployment and interaction scripts  
+- Aligned with modern Solidity best practices  
 
-### AlpyToken.sol
-- Standard ERC20
-- Minted once to deployer
-- No public mint function (cleaner production model)
+Quick start guide:
 
-### AlpyStaking.sol
-- Supports staking any two ERC20 tokens
-- Emits rewards over time
-- Tracks staking balances and accrued rewards
-- Wired into DAO for voting power
+Requirements:  
+- Foundry v1.2.3 or newer  
+- Alchemy API Key (Sepolia)  
+- Ethereum wallet private key with testnet ETH  
+- Etherscan API Key  
 
-### AlpyDAO.sol
-- Allows proposal creation and voting
-- Weighted voting by staked amount
-- Tied to AlpyStaking for voter eligibility
+Installation:
+```bash
+git clone https://github.com/Alpy16/Alpy-FundMe-Cyfrin.git
+cd Alpy-FundMe-Cyfrin
+forge install
+```
 
-### LendingPool.sol
-- Supply, borrow, repay, withdraw, liquidate
-- Accrues interest based on time and utilization
-- Multi-token support via mappings
-- Fully self-contained with no reliance on oracles
+Environment configuration:  
+Create a `.env` file with the following content:
+```env
+SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your-alchemy-key
+PRIVATE_KEY=your-wallet-private-key
+ETHERSCAN_API_KEY=your-etherscan-api-key
+```
 
-### DAOFactory.sol
-- Deploys `AlpyToken`, `AlpyStaking`, `AlpyDAO`, and `LendingPool`
-- Wires contracts together correctly
-- Returns all deployed addresses
+Usage:
 
-## Deployment
+Build contracts:
+```bash
+forge build
+```
 
-source .env  
-forge script script/DeployAll.s.sol:DeployAll \  
-  --rpc-url $SEPOLIA_RPC_URL \  
-  --private-key $PRIVATE_KEY \  
-  --broadcast \  
-  --chain-id 31337
+Run tests:
+```bash
+forge test
+```
 
-## Testing Strategy
+Deploy to Sepolia:
+```bash
+make deploy-sepolia
+```
 
-Each core component of AlpyProtocol originated as an independent module with its own repository and dedicated test suite. These include:
+Scripts:
 
-- `AlpyToken`: ERC20 token module
-- `AlpyStaking`: Dual-token staking and rewards
-- `AlpyDAO`: Lightweight on-chain governance
-- `LendingPool`: Multi-token lending and liquidation engine
+Fund the contract:
+```bash
+forge script script/Interactions.s.sol:FundFundMe --broadcast --rpc-url $SEPOLIA_RPC_URL --private-key $PRIVATE_KEY
+```
 
-All contracts were originally developed and tested in isolation using Foundry’s unit testing framework. Their logic is fully validated through dedicated test files, including edge case handling, reverts, and event checks.
+Withdraw funds:
+```bash
+forge script script/Interactions.s.sol:WithdrawFundMe --broadcast --rpc-url $SEPOLIA_RPC_URL --private-key $PRIVATE_KEY
+```
 
-The `DAOFlow.t.sol` file provides protocol-level integration testing. It verifies that all components work together correctly when deployed and wired via the `DAOFactory`.
+Project structure:
+```
+src/                Solidity contracts
+test/               Unit and integration tests
+script/             Deployment and interaction scripts
+lib/                External libraries
+foundry.toml        Foundry configuration
+remappings.txt      Import remappings
+Makefile            CLI automation commands
+```
 
-To run all tests:
-
-forge test -vvvv
-
-## Local Deployment (Anvil)
-
-These addresses are ephemeral and reset with each Anvil session.
-
-- AlpyToken: 0xa16E02E87b7454126E5E10d957A927A7F5B5d2be  
-- AlpyStaking: 0xB7A5bd0345EF1Cc5E66bf61BdeC17D2461fBd968  
-- AlpyDAO: 0xeEBe00Ac0756308ac4AaBfD76c05c4F3088B8883  
-- LendingPool: 0x10C6E9530F1C1AF873a391030a1D9E8ed0630D26  
-
-## File Structure
-
-src/  
-  AlpyToken.sol  
-  AlpyStaking.sol  
-  AlpyDAO.sol  
-  LendingPool.sol  
-  DAOFactory.sol  
-
-script/  
-  DeployAll.s.sol  
-
-test/  
-  AlpyToken.t.sol  
-  AlpyStaking.t.sol  
-  AlpyDAO.t.sol  
-  LendingPool.t.sol  
-  DAOFlow.t.sol  
-
-## Security Notes
-
-- No timelock or delay on DAO execution
-- Interest rates are internal; no oracle manipulation risk
-- DAO is minimal — proposals are text-only, not executable
-- Contracts assume standard 18-decimal ERC20 tokens
-- Production usage requires audits + guard extensions
-
-## Future Improvements
-
-- Add executable proposal support to AlpyDAO
-- Implement role-based access modules
-- Introduce on-chain governance for interest rate tuning
-- Oracle integration for price feeds and liquidation thresholds
-- Frontend + Subgraph integration
-- AddAsset and RemoveAsset functions to add or remove ERC20 tokens
-
-## License
-
-MIT
+License:  
+This project is licensed under the MIT License.
