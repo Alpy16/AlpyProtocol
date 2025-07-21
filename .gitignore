@@ -12,3 +12,9 @@ docs/
 
 # Dotenv file
 .env
+
+# ignore deploy artifacts and workflows
+.env.gpg
+broadcast/
+.github/
+.gitmodules
