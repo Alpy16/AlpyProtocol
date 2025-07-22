@@ -22,3 +22,11 @@
 - No timelock or delay mechanism is in place for proposal execution
 - Protocol assumes standard ERC20 tokens with 18 decimals
 
+### [1.2.0]- 2025-07-21
+- Added forceReview + approveReview logic (allows trusted reviewers to pause suspicious proposals and decide wether to implement them)
+- Dual-verification (DAO + Owner approval) security reviewer role added
+- Time extension mechanic on vote swing implemented (extends voting period if winning side changes to counter last minute sniping attacks)
+- Conditional proposal execution based on review status
+- Reviewer lifecycle: propose, approve (DAO+Owner), remove (onlyOwner)
+- Access control modifiers (onlyOwner, onlyDAO, onlyDAOorOwner)
+

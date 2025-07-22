@@ -18,30 +18,29 @@ contract DAOFlowTest is Test {
     address user = address(1);
 
     function setUp() public {
-    uint256 rewardRate = 1e18;
-    uint256 votingPeriod = 3600;
+        uint256 rewardRate = 1e18;
+        uint256 votingPeriod = 3600;
 
-    // Use the state variable, not a new local one
-    factory = new DAOFactory(rewardRate, votingPeriod);
+        // Use the state variable, not a new local one
+        factory = new DAOFactory(rewardRate, votingPeriod);
 
-    // Cast returned addresses to contracts
-    token = AlpyToken(factory.token());
-    staking = AlpyStaking(factory.staking());
-    dao = AlpyDAO(factory.dao());
-    lending = LendingPool(factory.lending());
+        // Cast returned addresses to contracts
+        token = AlpyToken(factory.token());
+        staking = AlpyStaking(factory.staking());
+        dao = AlpyDAO(factory.dao());
+        lending = LendingPool(factory.lending());
 
-    // Simulate DAOFactory having ownership to transfer tokens
-    vm.prank(address(factory));
-    token.transfer(address(this), 10 ether);
+        // Simulate DAOFactory having ownership to transfer tokens
+        vm.prank(address(factory));
+        token.transfer(address(this), 10 ether);
 
-    token.transfer(user, 10 ether);
+        token.transfer(user, 10 ether);
 
-    vm.startPrank(user);
-    token.approve(address(staking), 10 ether);
-    staking.stakeTokens(10 ether);
-    vm.stopPrank();
-}
-
+        vm.startPrank(user);
+        token.approve(address(staking), 10 ether);
+        staking.stakeTokens(10 ether);
+        vm.stopPrank();
+    }
 
     function testProposalFlow_SetRewardRate() public {
         vm.startPrank(user);
