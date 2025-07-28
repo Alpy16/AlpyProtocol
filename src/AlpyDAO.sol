@@ -6,7 +6,6 @@ interface IVotes {
 }
 
 contract AlpyDAO {
-
     address public owner;
     address public DAO;
 
@@ -22,11 +21,8 @@ contract AlpyDAO {
         bool executed;
     }
 
-
     uint256 public proposalCount;
     uint256 public votingPeriod;
-    
-
 
     IVotes public voteToken;
     mapping(uint256 => Proposal) public proposals;
@@ -40,13 +36,39 @@ contract AlpyDAO {
     mapping(address => bool) public daoApprovedReviewer;
     mapping(address => bool) public ownerApprovedReviewer;
 
+    // ERRORS
+    error NotAuthorized();
+    error NotOwner();
+    error NotDAO();
+    error NoVotingPower();
+    error AlreadyVoted();
+    error VotingWindowClosed();
+    error ProposalNotPassed();
+    error AlreadyExecuted();
+    error NotUnderReview();
+    error NotReviewer();
+    error AlreadyUnderReview();
+    error AlreadyReviewer();
+    error AlreadyPendingReviewer();
+    error AlreadyApprovedByDAO();
+    error AlreadyApprovedByOwner();
+    error NotDAOApproved();
+    error NotOwnerApproved();
+    error AlreadyFinalized();
+    error NotReviewerAddr();
 
-    
-    
-
-
-    event ProposalCreated(uint256 proposalId, address proposer, string description);
-    event Voted(address voter, uint256 proposalId, bool support, uint256 weight);
+    // EVENTS
+    event ProposalCreated(
+        uint256 proposalId,
+        address proposer,
+        string description
+    );
+    event Voted(
+        address voter,
+        uint256 proposalId,
+        bool support,
+        uint256 weight
+    );
     event Executed(uint256 proposalId);
     event ReviewRequested(uint256 proposalId);
     event ReviewApproved(uint256 proposalId);
@@ -61,32 +83,32 @@ contract AlpyDAO {
         votingPeriod = _votingPeriod;
         owner = msg.sender;
     }
+
     modifier onlyDAOorOwner() {
-    require(msg.sender == owner ||voteToken.getVotes(msg.sender) > 0 , "Not authorized");
-    _;
+        if (msg.sender != owner && voteToken.getVotes(msg.sender) == 0) {
+            revert NotAuthorized();
+        }
+        _;
     }
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
+        if (msg.sender != owner) revert NotOwner();
         _;
     }
+
     modifier onlyDAO() {
-    // simulation for DAO threshold (1000 tokens required to be considered DAO member)
-    // if this was a real DAO, you would have a more complex check, Minimum Stake, Reputation System, Locked Tokens,real ID Verification, etc. 
-    // Often several of these at a time
-    require(voteToken.getVotes(msg.sender) >= 1000, "Not enough tokens to act as DAO");
-    _;
-}
+        if (voteToken.getVotes(msg.sender) < 1000) revert NotDAO();
+        _;
+    }
 
-
-
-
-    function createProposal(address target, uint256 value, bytes memory data, string memory description)
-        external
-        returns (uint256)
-    {
+    function createProposal(
+        address target,
+        uint256 value,
+        bytes memory data,
+        string memory description
+    ) external returns (uint256) {
         uint256 weight = voteToken.getVotes(msg.sender);
-        require(weight > 0, "No voting power");
+        if (weight == 0) revert NoVotingPower();
 
         Proposal storage p = proposals[proposalCount];
         p.target = target;
@@ -100,119 +122,106 @@ contract AlpyDAO {
         return proposalCount++;
     }
 
-    function vote(uint256 proposalId, bool support) onlyDAO external {
+    function vote(uint256 proposalId, bool support) external {
         Proposal storage p = proposals[proposalId];
-        require(block.timestamp >= p.voteStart && block.timestamp <= p.voteEnd, "Not in voting window");
-        require(!hasVoted[proposalId][msg.sender], "Already voted");
+        if (block.timestamp < p.voteStart || block.timestamp > p.voteEnd)
+            revert VotingWindowClosed();
+        if (hasVoted[proposalId][msg.sender]) revert AlreadyVoted();
 
         bool currentOutcome = p.yesVotes > p.noVotes;
-
         uint256 weight = voteToken.getVotes(msg.sender);
-        require(weight > 0, "No voting power");
+        if (weight == 0) revert NoVotingPower();
 
-        uint256 simulatedVotesFor = p.yesVotes;
-        uint256 simulatedVotesAgainst = p.noVotes;
-
-        if (support) {
-        simulatedVotesFor += weight;
-        } else {
-        simulatedVotesAgainst += weight;
-        }
-
-        bool newOutcome = simulatedVotesFor > simulatedVotesAgainst;
+        uint256 simulatedYes = support ? p.yesVotes + weight : p.yesVotes;
+        uint256 simulatedNo = support ? p.noVotes : p.noVotes + weight;
+        bool newOutcome = simulatedYes > simulatedNo;
 
         uint256 timeLeft = p.voteEnd - block.timestamp;
         if (newOutcome != currentOutcome && timeLeft <= 5 minutes) {
-        p.voteEnd = block.timestamp + 10 minutes;
+            p.voteEnd = block.timestamp + 10 minutes;
         }
 
         hasVoted[proposalId][msg.sender] = true;
         if (support) {
-        p.yesVotes += weight;
+            p.yesVotes += weight;
         } else {
-        p.noVotes += weight;
+            p.noVotes += weight;
         }
 
         emit Voted(msg.sender, proposalId, support, weight);
-        }
-
+    }
 
     function executeProposal(uint256 proposalId) external {
         Proposal storage p = proposals[proposalId];
-        require(block.timestamp > p.voteEnd, "Voting period has not ended");
-        require(!p.executed, "Already executed");
+        if (block.timestamp <= p.voteEnd) revert VotingWindowClosed();
+        if (p.executed) revert AlreadyExecuted();
+
         if (forceReviewed[proposalId]) {
-        require(reviewApproved[proposalId], "Proposal under review and not approved");}
-        else {
-        require(p.yesVotes > p.noVotes, "Proposal did not pass vote");}
+            if (!reviewApproved[proposalId]) revert NotUnderReview();
+        } else {
+            if (p.yesVotes <= p.noVotes) revert ProposalNotPassed();
+        }
 
         p.executed = true;
-        (bool success,) = p.target.call{value: p.value}(p.data);
-        require(success, "Call failed");
+        (bool success, ) = p.target.call{value: p.value}(p.data);
+        if (!success) revert();
 
         emit Executed(proposalId);
     }
- 
+
     function forceReview(uint256 proposalId) external {
-    require(isReviewer[msg.sender], "Not reviewer");
-    require(forceReviewed[proposalId] == false, "Already under review");
-    forceReviewed[proposalId] = true;
-    
-    emit ReviewRequested(proposalId);
+        if (!isReviewer[msg.sender]) revert NotReviewer();
+        if (forceReviewed[proposalId]) revert AlreadyUnderReview();
+
+        forceReviewed[proposalId] = true;
+        emit ReviewRequested(proposalId);
     }
 
-    function approveReview (uint256 proposalId) external {
-        require(isReviewer[msg.sender] && forceReviewed[proposalId], "Not authorized or not under review");
+    function approveReview(uint256 proposalId) external {
+        if (!isReviewer[msg.sender] || !forceReviewed[proposalId])
+            revert NotUnderReview();
         reviewApproved[proposalId] = true;
-
-        emit ReviewApproved(proposalId);    
+        emit ReviewApproved(proposalId);
     }
 
-    function proposeReviewer (address potentialReviewers) external onlyDAOorOwner {
-        require(!isReviewer[potentialReviewers], "Already a reviewer");
-        require(!pendingReviewer[potentialReviewers], "Already pending reviewer");
-        pendingReviewer[potentialReviewers] = true;
-        emit ReviewerProposed(potentialReviewers);
+    function proposeReviewer(address potential) external onlyDAOorOwner {
+        if (isReviewer[potential]) revert AlreadyReviewer();
+        if (pendingReviewer[potential]) revert AlreadyPendingReviewer();
 
+        pendingReviewer[potential] = true;
+        emit ReviewerProposed(potential);
     }
+
     function approveReviewerByDAO(address reviewer) external onlyDAO {
-    require(!daoApprovedReviewer[reviewer], "Already approved by DAO");
-    require(pendingReviewer[reviewer], "Reviewer not proposed");
+        if (daoApprovedReviewer[reviewer]) revert AlreadyApprovedByDAO();
+        if (!pendingReviewer[reviewer]) revert NotReviewerAddr();
 
-    daoApprovedReviewer[reviewer] = true;
-    emit ReviewerApprovedByDAO(reviewer);
+        daoApprovedReviewer[reviewer] = true;
+        emit ReviewerApprovedByDAO(reviewer);
     }
 
     function approveReviewerByOwner(address reviewer) external onlyOwner {
-    require(!ownerApprovedReviewer[reviewer], "Already approved by Owner");
-    require(pendingReviewer[reviewer], "Reviewer not proposed");
-    ownerApprovedReviewer[reviewer] = true;
-    emit ReviewerApprovedByOwner(reviewer);
+        if (ownerApprovedReviewer[reviewer]) revert AlreadyApprovedByOwner();
+        if (!pendingReviewer[reviewer]) revert NotReviewerAddr();
+
+        ownerApprovedReviewer[reviewer] = true;
+        emit ReviewerApprovedByOwner(reviewer);
     }
 
-
-
     function approveReviewer(address reviewer) external onlyOwner {
-    require(daoApprovedReviewer[reviewer], "Not DAO-approved");
-    require(ownerApprovedReviewer[reviewer], "Not owner-approved");
-    require(!isReviewer[reviewer], "Already finalized");
+        if (!daoApprovedReviewer[reviewer]) revert NotDAOApproved();
+        if (!ownerApprovedReviewer[reviewer]) revert NotOwnerApproved();
+        if (isReviewer[reviewer]) revert AlreadyFinalized();
 
-    isReviewer[reviewer] = true;
-    pendingReviewer[reviewer] = false;
-    emit ReviewerApproved(reviewer);
+        isReviewer[reviewer] = true;
+        pendingReviewer[reviewer] = false;
 
+        emit ReviewerApproved(reviewer);
     }
 
     function removeReviewer(address reviewer) external onlyOwner {
-        require(isReviewer[reviewer], "Not a reviewer");
+        if (!isReviewer[reviewer]) revert NotReviewerAddr();
         isReviewer[reviewer] = false;
-
         emit ReviewerRemoved(reviewer);
     }
-    
-
-    
-    
-
-
 }

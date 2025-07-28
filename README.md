@@ -1,91 +1,82 @@
-# Alpy FundMe — Decentralized Crowdfunding on Ethereum
+# AlpyProtocol — Modular Lending, Staking, and Governance Protocol
 
-[![Foundry](https://img.shields.io/badge/Forged%20with-Foundry-blue)](https://github.com/foundry-rs/foundry)  
+[![Foundry](https://img.shields.io/badge/Forged%20with-Foundry-blue)](https://github.com/foundry-rs/foundry)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-About,
+## About
 
+AlpyProtocol is a modular DeFi system that integrates token-based governance, time-locked staking, dynamic lending with liquidation, and reward distribution. It is built entirely in Solidity using the Foundry framework, with an emphasis on modular deployment and gas-efficient design.
 
-Alpy FundMe is a decentralized crowdfunding smart contract built on Ethereum.
-This project was developed as part of the Cyfrin Updraft Solidity and Foundry bootcamp.
+This protocol is designed to be forkable, upgradeable, and secure under DAO governance, with protections against undercollateralized borrowing, governance capture, and emission abuse.
 
-Users can fund the contract with ETH, and the contract owner can withdraw accumulated funds.
-ETH to USD conversion is powered by Chainlink price feeds.
+## Features
 
+- Capped ERC20 governance token with fixed supply
+- Time-locked staking system with extendable lock duration and voting power
+- Lending pool with per-asset interest parameters, reserve factors, and normalized accounting
+- Liquidation logic with collateral and debt tracking
+- DAO contract with token-weighted proposal voting and optional force-review mechanism
+- Reviewer onboarding process requiring dual approval (owner and DAO)
+- ALPY reward distribution based on real-time debt and LTV ratio
+- Factory contract for single-call deployment of all core components
 
+## Quickstart
 
-Features:  
-- Fund contract with ETH  
-- USD-denominated minimum contribution (5 USD)  
-- Restricted withdrawals (only owner)  
-- Optimized withdrawal function  
-- Deployment to Sepolia testnet  
-- Comprehensive unit and integration tests using Foundry  
-- Automated deployment and interaction scripts  
-- Aligned with modern Solidity best practices  
+### Requirements
 
-Quick start guide:
+- Foundry (https://github.com/foundry-rs/foundry)
+- Node.js and Git (for dependency installation)
 
-Requirements:  
-- Foundry v1.2.3 or newer  
-- Alchemy API Key (Sepolia)  
-- Ethereum wallet private key with testnet ETH  
-- Etherscan API Key  
+### Installation
 
-Installation:
 ```bash
-git clone https://github.com/Alpy16/Alpy-FundMe-Cyfrin.git
-cd Alpy-FundMe-Cyfrin
+git clone https://github.com/Alpy16/AlpyProtocol.git
+cd AlpyProtocol
 forge install
 ```
 
-Environment configuration:  
-Create a `.env` file with the following content:
-```env
-SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your-alchemy-key
-PRIVATE_KEY=your-wallet-private-key
-ETHERSCAN_API_KEY=your-etherscan-api-key
-```
+### Environment Setup
 
-Usage:
+Ensure a valid `.env` file is provided if deploying to live networks. Local testing does not require environment variables.
 
-Build contracts:
+## Usage
+
+### Build
+
 ```bash
 forge build
 ```
 
-Run tests:
+### Run Tests
+
 ```bash
-forge test
+forge test -vvvv
 ```
 
-Deploy to Sepolia:
+### Deploy to Local Anvil
+
 ```bash
-make deploy-sepolia
+forge script script/DeployAll.s.sol:DeployAll --fork-url http://127.0.0.1:8545 --broadcast --legacy
 ```
 
-Scripts:
+## Project Structure
 
-Fund the contract:
-```bash
-forge script script/Interactions.s.sol:FundFundMe --broadcast --rpc-url $SEPOLIA_RPC_URL --private-key $PRIVATE_KEY
+```
+src/
+├── AlpyToken.sol           # ERC20 governance token (capped supply)
+├── AlpyStaking.sol         # Staking with time-lock and voting power calculation
+├── AlpyDAO.sol             # Governance contract with proposal voting and force-review
+├── LendingPool.sol         # Lending and borrowing with interest accrual and liquidation
+├── RewardDistributor.sol   # Distributes ALPY based on debt utilization (LTV)
+├── DAOFactory.sol          # Deploys and wires all contracts
+
+script/
+└── DeployAll.s.sol         # Main deployment script for local or testnet environments
+
+test/
+└── DAOFlow.t.sol           # Comprehensive integration and unit test coverage
 ```
 
-Withdraw funds:
-```bash
-forge script script/Interactions.s.sol:WithdrawFundMe --broadcast --rpc-url $SEPOLIA_RPC_URL --private-key $PRIVATE_KEY
-```
+## License
 
-Project structure:
-```
-src/                Solidity contracts
-test/               Unit and integration tests
-script/             Deployment and interaction scripts
-lib/                External libraries
-foundry.toml        Foundry configuration
-remappings.txt      Import remappings
-Makefile            CLI automation commands
-```
-
-License:  
-This project is licensed under the MIT License.
+This project is licensed under the MIT License. See the LICENSE file for details.

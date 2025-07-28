@@ -22,11 +22,32 @@
 - No timelock or delay mechanism is in place for proposal execution
 - Protocol assumes standard ERC20 tokens with 18 decimals
 
-### [1.2.0]- 2025-07-21
-- Added forceReview + approveReview logic (allows trusted reviewers to pause suspicious proposals and decide wether to implement them)
+## [1.2.0]- 2025-07-21
+- Added forceReview + approveReview logic (allows trusted reviewers to pause suspicious proposals and decide whether to implement them)
 - Dual-verification (DAO + Owner approval) security reviewer role added
 - Time extension mechanic on vote swing implemented (extends voting period if winning side changes to counter last minute sniping attacks)
 - Conditional proposal execution based on review status
 - Reviewer lifecycle: propose, approve (DAO+Owner), remove (onlyOwner)
 - Access control modifiers (onlyOwner, onlyDAO, onlyDAOorOwner)
 
+## [1.3.0] – 2025-07-28
+
+### Added
+- Chainlink Price Feed integration into `LendingPool` for real-time asset valuation
+- Reserve factor implementation per asset to route a portion of interest to the protocol
+- Normalized accounting across tokens using `decimals()` and `_changeDecimals()` utilities
+- Per-user LTV computation (`getLTV`) and total debt tracking (`getTotalDebt`)
+- LTV-based withdrawal gating and liquidation conditions
+- `RewardDistributor` now uses LTV to compute per-user ALPY emissions (normalized across token decimals)
+
+### Improved
+- Replaced all `require` statements with `if` conditions and custom errors across the codebase
+- Simplified access control and reverted with descriptive custom errors
+- Refactored internal accounting to support clean multi-asset expansion
+- Optimized LendingPool logic for gas and clarity
+
+### Known Limitations
+- `addAsset()` and `removeAsset()` are still restricted to the contract owner (not DAO-controlled)
+- Voting power in `AlpyDAO` still references external `IVotes`, not internal staking lock
+- Emission parameters (rate, slope) remain static and not adjustable by governance
+- Reviewer list remains non-enumerable on-chain

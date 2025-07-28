@@ -16,7 +16,7 @@ contract DAOFactory {
         AlpyToken _token = new AlpyToken();
         token = address(_token);
 
-        AlpyStaking _staking = new AlpyStaking(token, token, initialRewardRate, address(0));
+        AlpyStaking _staking = new AlpyStaking(token);
         staking = address(_staking);
 
         AlpyDAO _dao = new AlpyDAO(staking, votingPeriod);
@@ -24,7 +24,5 @@ contract DAOFactory {
 
         LendingPool _lending = new LendingPool(dao);
         lending = address(_lending);
-
-        _staking.setDao(dao);
     }
 }

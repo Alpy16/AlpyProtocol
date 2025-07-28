@@ -3,11 +3,13 @@ pragma solidity ^0.8.19;
 
 import "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import "/home/alpi/AlpyDAO/lib/chainlink-brownie-contracts/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract LendingPool {
     using SafeERC20 for IERC20;
 
-    uint256 public constant SECONDS_PER_YEAR = 31536000;
+    uint256 public constant SECONDS_PER_YEAR = 365 days;
     address public DAO;
     uint256 public ltv;
 
@@ -16,7 +18,7 @@ contract LendingPool {
         uint256 slope1;
         uint256 slope2;
         uint256 optimalUtilization;
-        uint256 reserveFactor; // in BPS (e.g. 1500 = 15%)
+        uint256 reserveFactor;
         uint256 totalSupplied;
         uint256 totalDebtToLPs;
     }
@@ -27,10 +29,17 @@ contract LendingPool {
     mapping(address => mapping(address => uint256)) public collateral;
     mapping(address => mapping(address => uint256)) public debt;
     mapping(address => mapping(address => uint256)) public lastUpdate;
+    mapping(address => AggregatorV3Interface) public priceFeeds;
+
     mapping(address => bool) public isSupported;
+    address[] public supportedTokens;
 
     event Supplied(address indexed user, address indexed token, uint256 amount);
-    event Withdrawn(address indexed user, address indexed token, uint256 amount);
+    event Withdrawn(
+        address indexed user,
+        address indexed token,
+        uint256 amount
+    );
     event Borrowed(address indexed user, address indexed token, uint256 amount);
     event Repaid(address indexed user, address indexed token, uint256 amount);
     event Liquidated(
@@ -41,6 +50,26 @@ contract LendingPool {
         uint256 collateralSeized
     );
     event AssetAdded(address indexed token);
+    event PriceFeedSet(address indexed token, address feed);
+
+    error NotDAO();
+    error ZeroAmount();
+    error UnsupportedAsset();
+    error InsufficientCollateral();
+    error AlreadySupplied();
+    error ExceedsLTV();
+    error RepaymentTooHigh();
+    error Undercollateralized();
+    error CollateralTooLow();
+    error TransferFailed();
+    error AlreadySupported();
+    error NotSupported();
+    error LTVTooHigh();
+    error InvalidPriceFeedAddress();
+    error FeedNotUptoDate();
+    error InvalidPriceData();
+    error NotLiquidatable();
+    error NoDebtToRepay();
 
     constructor(address _dao) {
         DAO = _dao;
@@ -48,14 +77,14 @@ contract LendingPool {
     }
 
     modifier onlyDAO() {
-        require(msg.sender == DAO, "Not DAO");
+        if (msg.sender != DAO) revert NotDAO();
         _;
-    } 
+    }
 
     function supply(IERC20 token, uint256 amount) external {
-        require(amount > 0, "Zero deposit");
+        if (amount == 0) revert ZeroAmount();
         address tokenAddr = address(token);
-        require(isSupported[tokenAddr], "Unsupported asset");
+        if (!isSupported[tokenAddr]) revert UnsupportedAsset();
 
         collateral[msg.sender][tokenAddr] += amount;
         assetData[tokenAddr].totalSupplied += amount;
@@ -64,12 +93,31 @@ contract LendingPool {
         emit Supplied(msg.sender, tokenAddr, amount);
     }
 
-    function withdraw(IERC20 token, uint256 amount) external {
-        _accrueInterest(msg.sender, token);
+    function withdraw(IERC20 token, uint256 amount, address user) external {
         address tokenAddr = address(token);
+        if (!isSupported[tokenAddr]) revert UnsupportedAsset();
+        if (amount == 0) revert ZeroAmount();
 
-        require(amount > 0, "Zero withdrawal");
-        require(collateral[msg.sender][tokenAddr] >= amount, "Insufficient collateral");
+        _accrueInterest(msg.sender, token);
+
+        uint256 currentCollateral = collateral[msg.sender][tokenAddr];
+        uint256 currentDebt = debt[msg.sender][tokenAddr];
+
+        uint8 decimals = IERC20Metadata(tokenAddr).decimals();
+        uint256 normalized = _changeDecimals(amount, decimals, 18);
+        uint256 price = getPrice(tokenAddr);
+        uint256 withdrawUSD = (normalized * price) / 1e8;
+
+        if (withdrawUSD > getCollateralValueUSD(user)) revert ExceedsLTV();
+
+        if (currentDebt > 0 && currentCollateral < amount) {
+            revert InsufficientCollateral();
+        }
+
+        uint256 newCollateralUSD = getCollateralValueUSD(user) - withdrawUSD;
+        uint256 maxBorrowable = (newCollateralUSD * ltv) / 1e18;
+
+        if (getDebtValueUSD(user) > maxBorrowable) revert ExceedsLTV();
 
         collateral[msg.sender][tokenAddr] -= amount;
         assetData[tokenAddr].totalSupplied -= amount;
@@ -80,15 +128,21 @@ contract LendingPool {
 
     function borrow(IERC20 token, uint256 amount) external {
         address tokenAddr = address(token);
-        require(isSupported[tokenAddr], "Unsupported asset");
+        if (!isSupported[tokenAddr]) revert UnsupportedAsset();
+        if (amount == 0) revert ZeroAmount();
 
         _accrueInterest(msg.sender, token);
-        require(amount > 0, "Zero borrow");
 
-        uint256 currentDebt = debt[msg.sender][tokenAddr];
-        uint256 currentCollateral = collateral[msg.sender][tokenAddr];
+        uint8 decimals = IERC20Metadata(tokenAddr).decimals();
+        uint256 normalized = _changeDecimals(amount, decimals, 18);
+        uint256 price = getPrice(tokenAddr);
+        uint256 borrowAmountUSD = (normalized * price) / 1e8;
 
-        require(currentDebt + amount <= (currentCollateral * ltv) / 1e18, "Exceeds LTV");
+        uint256 totalDebtAfter = getDebtValueUSD(msg.sender) + borrowAmountUSD;
+        uint256 maxBorrowable = (getCollateralValueUSD(msg.sender) * ltv) /
+            1e18;
+
+        if (totalDebtAfter > maxBorrowable) revert ExceedsLTV();
 
         debt[msg.sender][tokenAddr] += amount;
         assetData[tokenAddr].totalDebtToLPs += amount;
@@ -97,50 +151,91 @@ contract LendingPool {
         emit Borrowed(msg.sender, tokenAddr, amount);
     }
 
-    function repay(IERC20 token, uint256 amount) external {
-        _accrueInterest(msg.sender, token);
+    function repay(IERC20 token, uint256 amount, address user) external {
         address tokenAddr = address(token);
+        if (!isSupported[tokenAddr]) revert UnsupportedAsset();
+        if (amount == 0) revert ZeroAmount();
 
-        require(amount > 0, "Zero repayment");
-        require(debt[msg.sender][tokenAddr] >= amount, "Repayment exceeds debt");
+        _accrueInterest(user, token);
 
-        debt[msg.sender][tokenAddr] -= amount;
+        uint8 decimals = IERC20Metadata(tokenAddr).decimals();
+        uint256 normalized = _changeDecimals(amount, decimals, 18);
+        uint256 price = getPrice(tokenAddr);
+        uint256 repayUSD = (normalized * price) / 1e8;
+
+        uint256 totalDebtUSD = getDebtValueUSD(user);
+        if (repayUSD > totalDebtUSD) revert RepaymentTooHigh();
+
+        debt[user][tokenAddr] -= amount;
         assetData[tokenAddr].totalDebtToLPs -= amount;
 
         token.safeTransferFrom(msg.sender, address(this), amount);
         emit Repaid(msg.sender, tokenAddr, amount);
     }
 
-    function liquidate(IERC20 token, address user, uint256 repayAmount) external {
-        _accrueInterest(user, token);
+    function liquidate(
+        IERC20 token,
+        address user,
+        uint256 repayAmount
+    ) external {
         address tokenAddr = address(token);
+        if (!isSupported[tokenAddr]) revert UnsupportedAsset();
+        if (repayAmount == 0) revert ZeroAmount();
 
-        uint256 currentDebt = debt[msg.sender][tokenAddr];
-        uint256 currentCollateral = collateral[msg.sender][tokenAddr];
+        _accrueInterest(user, token);
 
-        require(repayAmount > 0, "Zero repay");
-        require(debt[user][tokenAddr] > 0, "No debt");
-        require(currentDebt > (currentCollateral * ltv) / 1e18, "Not undercollateralized");
+        uint256 currentDebt = debt[user][tokenAddr];
+        if (currentDebt == 0) revert NoDebtToRepay();
 
-        uint256 collateralToSeize = repayAmount * 110 / 100;
-        require(collateral[user][tokenAddr] >= collateralToSeize, "Insufficient collateral");
+        uint256 totalDebtUSD = getDebtValueUSD(user);
+        uint256 collateralUSD = getCollateralValueUSD(user);
+
+        uint256 maxBorrowable = (collateralUSD * ltv) / 1e18;
+        if (totalDebtUSD <= maxBorrowable) revert Undercollateralized();
+        if (totalDebtUSD <= (collateralUSD * ltv * 95) / (100 * 1e18)) {
+            revert NotLiquidatable();
+        }
+
+        uint8 repayDecimals = IERC20Metadata(tokenAddr).decimals();
+        uint256 repayNormalized = _changeDecimals(
+            repayAmount,
+            repayDecimals,
+            18
+        );
+        uint256 repayUSD = (repayNormalized * getPrice(tokenAddr)) / 1e8;
+        uint256 seizeUSD = (repayUSD * 110) / 100;
+
+        uint256 collateralPrice = getPrice(tokenAddr);
+        uint256 seizeAmountNormalized = (seizeUSD * 1e8) / collateralPrice;
+        uint256 seizeAmount = _changeDecimals(
+            seizeAmountNormalized,
+            18,
+            repayDecimals
+        );
+
+        if (collateral[user][tokenAddr] < seizeAmount)
+            revert CollateralTooLow();
 
         debt[user][tokenAddr] -= repayAmount;
         assetData[tokenAddr].totalDebtToLPs -= repayAmount;
 
-        collateral[user][tokenAddr] -= collateralToSeize;
-        assetData[tokenAddr].totalSupplied -= collateralToSeize;
+        collateral[user][tokenAddr] -= seizeAmount;
+        assetData[tokenAddr].totalSupplied -= seizeAmount;
 
-        token.safeTransfer(msg.sender, collateralToSeize);
+        token.safeTransfer(msg.sender, seizeAmount);
         token.safeTransferFrom(msg.sender, address(this), repayAmount);
 
-        emit Liquidated(user, msg.sender, tokenAddr, repayAmount, collateralToSeize);
+        emit Liquidated(user, msg.sender, tokenAddr, repayAmount, seizeAmount);
     }
 
-    function accruedInterest(address user, address token) public view returns (uint256) {
+    function accruedInterest(
+        address user,
+        address token
+    ) public view returns (uint256) {
         uint256 timeElapsed = block.timestamp - lastUpdate[user][token];
         uint256 rate = getBorrowRate(token);
-        return (debt[user][token] * rate * timeElapsed) / 1e18 / SECONDS_PER_YEAR;
+        return
+            (debt[user][token] * rate * timeElapsed) / 1e18 / SECONDS_PER_YEAR;
     }
 
     function _accrueInterest(address user, IERC20 token) internal {
@@ -166,7 +261,12 @@ contract LendingPool {
             return data.baseRate + (util * data.slope1) / 1e18;
         } else {
             uint256 excessUtil = util - data.optimalUtilization;
-            return data.baseRate + (data.optimalUtilization * data.slope1 + excessUtil * data.slope2) / 1e18;
+            return
+                data.baseRate +
+                ((data.optimalUtilization *
+                    data.slope1 +
+                    excessUtil *
+                    data.slope2) / 1e18);
         }
     }
 
@@ -184,8 +284,10 @@ contract LendingPool {
         uint256 optimalUtilization,
         uint256 reserveFactor
     ) external onlyDAO {
-        require(!isSupported[token], "Already supported");
+        if (isSupported[token]) revert AlreadySupported();
         isSupported[token] = true;
+        supportedTokens.push(token);
+
         assetData[token] = AssetData({
             baseRate: baseRate,
             slope1: slope1,
@@ -195,16 +297,101 @@ contract LendingPool {
             totalSupplied: 0,
             totalDebtToLPs: 0
         });
+
         emit AssetAdded(token);
     }
 
     function removeAsset(address token) external onlyDAO {
-        require(isSupported[token], "Not supported");
+        if (!isSupported[token]) revert NotSupported();
         isSupported[token] = false;
     }
 
     function setLTV(uint256 _ltv) external onlyDAO {
-        require(_ltv <= 1e18, "LTV too high");
+        if (_ltv > 1e18) revert LTVTooHigh();
         ltv = _ltv;
+    }
+
+    function getTotalDebt(address user) external view returns (uint256 total) {
+        for (uint256 i = 0; i < supportedTokens.length; i++) {
+            address token = supportedTokens[i];
+            total += debt[user][token];
+        }
+    }
+
+    function getLTV() external view returns (uint256) {
+        return ltv;
+    }
+
+    function _changeDecimals(
+        uint256 amount,
+        uint8 fromDecimals,
+        uint8 toDecimals
+    ) public pure returns (uint256) {
+        if (fromDecimals == toDecimals) {
+            return amount;
+        } else if (fromDecimals < toDecimals) {
+            return amount * (10 ** (toDecimals - fromDecimals));
+        } else {
+            return amount / (10 ** (fromDecimals - toDecimals));
+        }
+    }
+
+    function setPriceFeed(
+        address token,
+        AggregatorV3Interface feed
+    ) external onlyDAO {
+        if (address(feed) == address(0)) revert InvalidPriceFeedAddress();
+        priceFeeds[token] = feed;
+        emit PriceFeedSet(token, address(feed));
+    }
+
+    function getPrice(address token) public view returns (uint256 price) {
+        AggregatorV3Interface feed = priceFeeds[token];
+        if (address(feed) == address(0)) {
+            revert NotSupported();
+        }
+        (, int256 answer, , uint256 updatedAt, ) = feed.latestRoundData();
+        if (answer <= 0) {
+            revert InvalidPriceData();
+        }
+
+        if (block.timestamp - updatedAt > 1 hours) {
+            revert FeedNotUptoDate();
+        } else return uint256(answer);
+    }
+
+    function getCollateralValueUSD(
+        address user
+    ) public view returns (uint256 totalUSD) {
+        for (uint256 i = 0; i < supportedTokens.length; i++) {
+            address token = supportedTokens[i];
+            uint256 amount = collateral[user][token];
+
+            if (amount == 0) continue;
+
+            uint8 decimals = IERC20Metadata(token).decimals();
+            uint256 price = getPrice(token);
+            uint256 normalized = _changeDecimals(amount, decimals, 18);
+            totalUSD += (normalized * price) / 1e8;
+        }
+
+        return totalUSD;
+    }
+
+    function getDebtValueUSD(
+        address user
+    ) public view returns (uint256 totalDebtUSD) {
+        for (uint256 i = 0; i < supportedTokens.length; i++) {
+            address token = supportedTokens[i];
+            uint256 amount = debt[user][token];
+
+            if (amount == 0) continue;
+
+            uint8 decimals = IERC20Metadata(token).decimals();
+            uint256 price = getPrice(token);
+            uint256 normalized = _changeDecimals(amount, decimals, 18);
+            totalDebtUSD += (normalized * price) / 1e8;
+        }
+        return totalDebtUSD;
     }
 }
