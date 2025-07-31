@@ -5,27 +5,33 @@
 
 ## About
 
-AlpyProtocol is a modular DeFi system that integrates token-based governance, time-locked staking, dynamic lending with liquidation, and reward distribution. It is built entirely in Solidity using the Foundry framework, with an emphasis on modular deployment and gas-efficient design.
+AlpyProtocol is a modular DeFi system that integrates DAO-based governance, time-locked staking, a multi-asset lending pool, and real-time reward emissions. Built entirely with Solidity and Foundry, it emphasizes security, modularity, and upgradeability.
 
-This protocol is designed to be forkable, upgradeable, and secure under DAO governance, with protections against undercollateralized borrowing, governance capture, and emission abuse.
+The system includes DAO-controlled lending, slashing logic for malicious actors, dynamic reward mechanisms based on LTV, and clean project wiring using a factory-based architecture.
 
 ## Features
 
-- Capped ERC20 governance token with fixed supply
-- Time-locked staking system with extendable lock duration and voting power
-- Lending pool with per-asset interest parameters, reserve factors, and normalized accounting
-- Liquidation logic with collateral and debt tracking
-- DAO contract with token-weighted proposal voting and optional force-review mechanism
-- Reviewer onboarding process requiring dual approval (owner and DAO)
-- ALPY reward distribution based on real-time debt and LTV ratio
-- Factory contract for single-call deployment of all core components
+- Fixed-supply ERC20 governance token (10M ALPY)
+- Time-locked staking with voting power = stake × lock duration
+- Lending pool with:
+  - Per-asset reserve configs
+  - Dynamic interest accrual
+  - Collateral/debt tracking
+  - Chainlink-based USD normalization
+- DAO governance with:
+  - Proposal lifecycle (create, vote, execute)
+  - Voting time extension on outcome change
+  - Optional `forceReview` flow via dual-approved reviewers
+- RewardDistributor based on normalized LTV
+- Slashing: stake + token penalty with exponential voting bans
+- DAOFactory for modular deployment of all core contracts
 
 ## Quickstart
 
 ### Requirements
 
 - Foundry (https://github.com/foundry-rs/foundry)
-- Node.js and Git (for dependency installation)
+- Node.js and Git
 
 ### Installation
 
@@ -37,7 +43,7 @@ forge install
 
 ### Environment Setup
 
-Ensure a valid `.env` file is provided if deploying to live networks. Local testing does not require environment variables.
+Set up `.env` if deploying on live networks. Local testing works without it.
 
 ## Usage
 
@@ -63,20 +69,20 @@ forge script script/DeployAll.s.sol:DeployAll --fork-url http://127.0.0.1:8545 -
 
 ```
 src/
-├── AlpyToken.sol           # ERC20 governance token (capped supply)
-├── AlpyStaking.sol         # Staking with time-lock and voting power calculation
-├── AlpyDAO.sol             # Governance contract with proposal voting and force-review
-├── LendingPool.sol         # Lending and borrowing with interest accrual and liquidation
-├── RewardDistributor.sol   # Distributes ALPY based on debt utilization (LTV)
-├── DAOFactory.sol          # Deploys and wires all contracts
+├── AlpyToken.sol           # Capped 10M ERC20 token
+├── AlpyStaking.sol         # Time-locked staking + voting power + slashing
+├── AlpyDAO.sol             # Governance with force-review and access control
+├── LendingPool.sol         # Lending logic with Chainlink pricing and reserve accounting
+├── RewardDistributor.sol   # LTV-based ALPY reward emissions
+├── DAOFactory.sol          # One-click deployment of all modules
 
 script/
-└── DeployAll.s.sol         # Main deployment script for local or testnet environments
+└── DeployAll.s.sol         # Deployment script with logging
 
 test/
-└── DAOFlow.t.sol           # Comprehensive integration and unit test coverage
+└── DAOFlow.t.sol           # All-in-one test suite
 ```
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+This project is licensed under the MIT License.

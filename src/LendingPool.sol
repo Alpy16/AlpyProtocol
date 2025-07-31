@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import "/home/alpi/AlpyDAO/lib/chainlink-brownie-contracts/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import "lib/chainlink-brownie-contracts/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract LendingPool {
@@ -22,6 +22,12 @@ contract LendingPool {
         uint256 totalSupplied;
         uint256 totalDebtToLPs;
     }
+
+    enum ProposalType {
+        Generic,
+        SetReserveConfig
+    }
+    mapping(uint256 => ProposalType) public proposalTypes;
 
     mapping(address => AssetData) public assetData;
     mapping(address => uint256) public protocolReserves;
@@ -304,6 +310,23 @@ contract LendingPool {
     function removeAsset(address token) external onlyDAO {
         if (!isSupported[token]) revert NotSupported();
         isSupported[token] = false;
+    }
+
+    function setReserveConfig(
+        address token,
+        uint256 baseRate,
+        uint256 slope1,
+        uint256 slope2,
+        uint256 optimalUtilization,
+        uint256 reserveFactor
+    ) external onlyDAO {
+        if (!isSupported[token]) revert NotSupported();
+        AssetData storage asset = assetData[token];
+        asset.baseRate = baseRate;
+        asset.slope1 = slope1;
+        asset.slope2 = slope2;
+        asset.optimalUtilization = optimalUtilization;
+        asset.reserveFactor = reserveFactor;
     }
 
     function setLTV(uint256 _ltv) external onlyDAO {

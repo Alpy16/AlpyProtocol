@@ -2,18 +2,21 @@
 pragma solidity ^0.8.19;
 
 import {Script} from "forge-std/Script.sol";
-import {AlpyToken} from "src/AlpyToken.sol";
-import {AlpyStaking} from "src/AlpyStaking.sol";
+import {AlpyToken} from "../src/AlpyToken.sol";
+import {AlpyStaking} from "../src/AlpyStaking.sol";
 
 contract StakeAgain is Script {
     function run() external {
-        vm.startBroadcast();
+        uint256 pk = vm.envUint("PRIVATE_KEY");
+        vm.startBroadcast(pk);
 
         AlpyToken token = AlpyToken(0x5FbDB2315678afecb367f032d93F642f64180aa3);
-        AlpyStaking staking = AlpyStaking(0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512);
+        AlpyStaking staking = AlpyStaking(
+            0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+        );
 
         token.approve(address(staking), 1000 ether);
-        staking.stakeTokens(1000 ether);
+        staking.stake(1000 ether, 90 days);
 
         vm.stopBroadcast();
     }

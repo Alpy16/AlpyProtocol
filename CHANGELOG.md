@@ -1,7 +1,5 @@
 # Changelog
 
-
-
 ## [1.0.0] – 2025-07-20
 
 ### Added
@@ -22,32 +20,66 @@
 - No timelock or delay mechanism is in place for proposal execution
 - Protocol assumes standard ERC20 tokens with 18 decimals
 
-## [1.2.0]- 2025-07-21
-- Added forceReview + approveReview logic (allows trusted reviewers to pause suspicious proposals and decide whether to implement them)
-- Dual-verification (DAO + Owner approval) security reviewer role added
-- Time extension mechanic on vote swing implemented (extends voting period if winning side changes to counter last minute sniping attacks)
-- Conditional proposal execution based on review status
-- Reviewer lifecycle: propose, approve (DAO+Owner), remove (onlyOwner)
-- Access control modifiers (onlyOwner, onlyDAO, onlyDAOorOwner)
+---
+
+## [1.2.0] – 2025-07-21
+
+### Added
+- `forceReview()` and `approveReview()` logic for trusted proposal moderation
+- Dual-verification (DAO + Owner) for reviewer onboarding
+- Time-extension on vote swing to prevent last-minute attacks
+- Reviewer lifecycle: propose → approve → remove
+- Role-based access control using `onlyDAO`, `onlyOwner`, `onlyDAOorOwner`
+
+---
 
 ## [1.3.0] – 2025-07-28
 
 ### Added
-- Chainlink Price Feed integration into `LendingPool` for real-time asset valuation
-- Reserve factor implementation per asset to route a portion of interest to the protocol
-- Normalized accounting across tokens using `decimals()` and `_changeDecimals()` utilities
-- Per-user LTV computation (`getLTV`) and total debt tracking (`getTotalDebt`)
-- LTV-based withdrawal gating and liquidation conditions
-- `RewardDistributor` now uses LTV to compute per-user ALPY emissions (normalized across token decimals)
+- Chainlink Price Feed integration for real-time asset pricing
+- Reserve factor per asset to redirect protocol-side interest
+- Token decimal normalization via `_changeDecimals()` utility
+- LTV-based withdrawal gating and liquidation logic
+- RewardDistributor calculates emissions based on user LTV
 
 ### Improved
-- Replaced all `require` statements with `if` conditions and custom errors across the codebase
-- Simplified access control and reverted with descriptive custom errors
-- Refactored internal accounting to support clean multi-asset expansion
-- Optimized LendingPool logic for gas and clarity
+- Full refactor: `require` → `if` with custom errors
+- Internal accounting cleanup across contracts
+- Simplified access control and revert messages
+- Modular gas-optimized logic in LendingPool
 
 ### Known Limitations
-- `addAsset()` and `removeAsset()` are still restricted to the contract owner (not DAO-controlled)
-- Voting power in `AlpyDAO` still references external `IVotes`, not internal staking lock
-- Emission parameters (rate, slope) remain static and not adjustable by governance
-- Reviewer list remains non-enumerable on-chain
+- Asset listing still restricted to owner, not DAO-controlled
+- DAO voting still depends on external IVotes interface
+- Emission parameters are hardcoded, not DAO-managed
+- Reviewer list not enumerable on-chain
+
+
+## [1.4.0] – 2025-07-31
+
+### Added
+- `slash()` function in `AlpyStaking`:
+  - Penalizes malicious users by confiscating 10% of their stake and ALPY balance (or 20% if no stake)
+  - Applies an exponential voting ban: 7d → 14d → 28d etc.
+  - Requires `onlyAuthorized` (DAO or Reviewer) access
+  - Emits `Slashed` event with details
+- `bannedUntil` integrated into voting logic to prevent slashed users from participating
+- Cooldown mechanism between slashes to prevent abuse
+- `lastSlashed` and `slashCount` mappings to track slash history
+- `onlyAuthorized` access modifier added across slashing admin calls
+- Treasury address receives slashed tokens (configurable)
+
+### Improved
+- Voting logic now checks `bannedUntil` before allowing votes
+- Reviewer flow hardened to ensure proper sequencing and protection
+- Comments removed and logic streamlined for production-readiness
+
+### Security
+- Silent failure cases replaced with explicit custom errors
+- Added revert guards to ensure slashing cannot proceed without token allowance
+- Reorganized slashing and reviewer logic to improve gas usage and traceability
+
+### Notes
+- Slashed ALPY tokens are redirected to the DAO treasury
+- DAO/reviewer moderation powers are fully live
+- Voting system now includes both pre-checks and reactive controls
