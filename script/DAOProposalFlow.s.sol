@@ -6,19 +6,21 @@ import {AlpyDAO} from "../src/AlpyDAO.sol";
 
 contract DAOProposalFlow is Script {
     function run() external {
-        uint256 privateKey = vm.envUint("PRIVATE_KEY");
-        vm.startBroadcast(privateKey);
+        uint256 pk = vm.envUint("PRIVATE_KEY");
+        address daoAddr = vm.envAddress("DAO_ADDRESS");
+        address stakingAddr = vm.envAddress("STAKING_ADDRESS");
+        address reviewer = vm.envAddress("REVIEWER");
 
-        AlpyDAO dao = AlpyDAO(0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0);
+        vm.startBroadcast(pk);
 
-        dao.propose(
-            0x0000000000000000000000000000000000000001,
-            0,
-            abi.encodeWithSignature("doSomething()"),
-            "Execute doSomething"
+        AlpyDAO dao = AlpyDAO(daoAddr);
+
+        uint256 id = dao.propose(
+            stakingAddr, 0, abi.encodeWithSignature("setReviewer(address,bool)", reviewer, true), "add reviewer"
         );
 
-        dao.vote(0, true);
+        dao.vote(id, true);
+        dao.execute(id);
 
         vm.stopBroadcast();
     }

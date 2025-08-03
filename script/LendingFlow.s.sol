@@ -7,17 +7,22 @@ import {LendingPool} from "../src/LendingPool.sol";
 
 contract LendingFlow is Script {
     function run() external {
-        uint256 privateKey = vm.envUint("PRIVATE_KEY");
-        vm.startBroadcast(privateKey);
+        uint256 pk = vm.envUint("PRIVATE_KEY");
+        address poolAddr = vm.envAddress("POOL_ADDRESS");
+        address tokenAddr = vm.envAddress("TOKEN_ADDRESS");
+        address user = vm.addr(pk);
 
-        IERC20 token = IERC20(0x5FbDB2315678afecb367f032d93F642f64180aa3);
-        LendingPool pool = LendingPool(
-            0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
-        );
+        vm.startBroadcast(pk);
 
-        token.approve(address(pool), 1_000 ether);
+        LendingPool pool = LendingPool(poolAddr);
+        IERC20 token = IERC20(tokenAddr);
+
         token.approve(address(pool), 1_000 ether);
         pool.supply(token, 1_000 ether);
+        pool.borrow(token, 500 ether);
+        token.approve(address(pool), 500 ether);
+        pool.repay(token, 500 ether, user);
+        pool.withdraw(token, 1_000 ether, user);
 
         vm.stopBroadcast();
     }
