@@ -2,8 +2,9 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract AlpyStaking {
+contract AlpyStaking is Ownable {
     using SafeERC20 for IERC20;
 
     error ZeroAmount();
@@ -46,7 +47,11 @@ contract AlpyStaking {
     mapping(address => uint256) public lastSlashed;
     mapping(address => bool) public isReviewer;
 
-    constructor(address _stakingToken, address _DAO, address _treasury) {
+    constructor(
+        address _stakingToken,
+        address _DAO,
+        address _treasury
+    ) Ownable(msg.sender) {
         stakingToken = IERC20(_stakingToken);
         DAO = _DAO;
         treasury = _treasury;
@@ -137,7 +142,6 @@ contract AlpyStaking {
 
         slashCount[user]++;
         bannedUntil[user] = block.timestamp + (7 days << slashCount[user]);
-
         lastSlashed[user] = block.timestamp;
 
         emit Slashed(user, stakeSlash, tokenSlash, bannedUntil[user]);

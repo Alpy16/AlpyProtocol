@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import {AlpyToken} from "./AlpyToken.sol";
-import {AlpyStaking} from "./AlpyStaking.sol";
-import {AlpyDAO} from "./AlpyDAO.sol";
-import {LendingPool} from "./LendingPool.sol";
+import "./AlpyToken.sol";
+import "./AlpyStaking.sol";
+import "./AlpyDAO.sol";
+import "./LendingPool.sol";
 
 contract DAOFactory {
     address public token;
@@ -12,11 +12,15 @@ contract DAOFactory {
     address public dao;
     address public lending;
 
-    constructor(uint256 initialRewardRate, uint256 votingPeriod) {
+    constructor(uint256 votingPeriod) {
         AlpyToken _token = new AlpyToken();
         token = address(_token);
 
-        AlpyStaking _staking = new AlpyStaking(token);
+        AlpyStaking _staking = new AlpyStaking(
+            token,
+            address(this),
+            address(this)
+        );
         staking = address(_staking);
 
         AlpyDAO _dao = new AlpyDAO(staking, votingPeriod);

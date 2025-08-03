@@ -1,18 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-interface IVotes {
-    function getVotes(address user) external view returns (uint256);
-
-    function bannedUntil(address user) external view returns (uint256);
-}
+import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
+import {AlpyStaking} from "./AlpyStaking.sol";
 
 contract AlpyDAO {
-    address public owner;
-    uint256 public proposalCount;
-    uint256 public votingPeriod;
+    error OnlyOwner();
+    error OnlyDAO();
+    error NoVotingPower();
+    error AlreadyVoted();
+    error ProposalRejected();
+    error AlreadyApproved();
 
+    address public owner;
+    address public staking;
     IVotes public voteToken;
+    uint256 public votingPeriod;
+    uint256 public proposalCount;
 
     struct Proposal {
         address target;
@@ -29,44 +33,40 @@ contract AlpyDAO {
     mapping(uint256 => Proposal) public proposals;
     mapping(uint256 => mapping(address => bool)) public hasVoted;
 
-    error NotOwner();
-    error AlreadyVoted();
-    error VotingClosed();
-    error NoVotingPower();
-    error BannedFromVoting();
-    error AlreadyExecuted();
-    error ProposalRejected();
+    mapping(uint256 => bool) public forceReviewed;
+    mapping(uint256 => bool) public reviewApproved;
 
-    event ProposalCreated(uint256 proposalId, string description);
-    event Voted(
-        address voter,
-        uint256 proposalId,
-        bool support,
-        uint256 weight
-    );
-    event Executed(uint256 proposalId);
-
-    constructor(address _voteToken, uint256 _votingPeriod) {
-        voteToken = IVotes(_voteToken);
-        votingPeriod = _votingPeriod;
-        owner = msg.sender;
-    }
+    mapping(address => bool) public isReviewer;
+    mapping(address => bool) public daoApprovedReviewer;
+    mapping(address => bool) public ownerApprovedReviewer;
 
     modifier onlyOwner() {
-        if (msg.sender != owner) revert NotOwner();
+        if (msg.sender != owner) revert OnlyOwner();
         _;
     }
 
-    function createProposal(
+    modifier onlyDAO() {
+        if (voteToken.getVotes(msg.sender) < 1000 ether) revert OnlyDAO();
+        _;
+    }
+
+    constructor(address _staking, uint256 _votingPeriod) {
+        owner = msg.sender;
+        staking = _staking;
+        voteToken = IVotes(_staking);
+        votingPeriod = _votingPeriod;
+    }
+
+    function propose(
         address target,
         uint256 value,
-        bytes memory data,
-        string memory description
+        bytes calldata data,
+        string calldata description
     ) external returns (uint256) {
-        uint256 weight = voteToken.getVotes(msg.sender);
-        if (weight == 0) revert NoVotingPower();
+        if (voteToken.getVotes(msg.sender) == 0) revert NoVotingPower();
 
-        proposals[proposalCount] = Proposal({
+        uint256 id = ++proposalCount;
+        proposals[id] = Proposal({
             target: target,
             value: value,
             data: data,
@@ -78,38 +78,68 @@ contract AlpyDAO {
             executed: false
         });
 
-        emit ProposalCreated(proposalCount, description);
-        return proposalCount++;
+        return id;
     }
 
-    function vote(uint256 proposalId, bool support) external {
-        Proposal storage p = proposals[proposalId];
-        if (block.timestamp < p.voteStart || block.timestamp > p.voteEnd)
-            revert VotingClosed();
-        if (hasVoted[proposalId][msg.sender]) revert AlreadyVoted();
-        if (block.timestamp < voteToken.bannedUntil(msg.sender))
-            revert BannedFromVoting();
+    function vote(uint256 id, bool support) external {
+        Proposal storage p = proposals[id];
+        if (block.timestamp > p.voteEnd) revert ProposalRejected();
+        if (hasVoted[id][msg.sender]) revert AlreadyVoted();
 
-        uint256 weight = voteToken.getVotes(msg.sender);
-        if (weight == 0) revert NoVotingPower();
+        uint256 votes = voteToken.getVotes(msg.sender);
+        if (votes == 0) revert NoVotingPower();
 
-        hasVoted[proposalId][msg.sender] = true;
-        if (support) p.yesVotes += weight;
-        else p.noVotes += weight;
+        if (support) {
+            p.yesVotes += votes;
+        } else {
+            p.noVotes += votes;
+        }
 
-        emit Voted(msg.sender, proposalId, support, weight);
+        hasVoted[id][msg.sender] = true;
     }
 
-    function executeProposal(uint256 proposalId) external {
-        Proposal storage p = proposals[proposalId];
-        if (block.timestamp <= p.voteEnd) revert VotingClosed();
-        if (p.executed) revert AlreadyExecuted();
-        if (p.yesVotes <= p.noVotes) revert ProposalRejected();
+    function forceReview(uint256 id) external onlyOwner {
+        forceReviewed[id] = true;
+    }
+
+    function approveReview(uint256 id) external {
+        if (!isReviewer[msg.sender]) revert OnlyDAO();
+        reviewApproved[id] = true;
+    }
+
+    function execute(uint256 id) external {
+        Proposal storage p = proposals[id];
+
+        if (p.executed) revert ProposalRejected();
+
+        if (
+            p.yesVotes <= p.noVotes &&
+            (!forceReviewed[id] || !reviewApproved[id])
+        ) revert ProposalRejected();
 
         p.executed = true;
-        (bool success, ) = p.target.call{value: p.value}(p.data);
-        if (!success) revert("Proposal execution failed");
+        (bool ok, ) = p.target.call{value: p.value}(p.data);
+        require(ok);
+    }
 
-        emit Executed(proposalId);
+    function proposeReviewer(address reviewer) external onlyDAO {
+        daoApprovedReviewer[reviewer] = true;
+    }
+
+    function ownerApproveReviewer(address reviewer) external onlyOwner {
+        ownerApprovedReviewer[reviewer] = true;
+    }
+
+    function approveReviewer(address reviewer) external {
+        if (!daoApprovedReviewer[reviewer] || !ownerApprovedReviewer[reviewer])
+            revert AlreadyApproved();
+
+        isReviewer[reviewer] = true;
+    }
+
+    function removeReviewer(address reviewer) external onlyOwner {
+        isReviewer[reviewer] = false;
+        daoApprovedReviewer[reviewer] = false;
+        ownerApprovedReviewer[reviewer] = false;
     }
 }
