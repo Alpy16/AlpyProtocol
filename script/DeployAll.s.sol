@@ -2,40 +2,19 @@
 pragma solidity ^0.8.19;
 
 import "forge-std/Script.sol";
-import {AlpyToken} from "../src/AlpyToken.sol";
-import {AlpyStaking} from "../src/AlpyStaking.sol";
-import {AlpyDAO} from "../src/AlpyDAO.sol";
-import {LendingPool} from "../src/LendingPool.sol";
-import {RewardDistributor} from "../src/RewardDistributor.sol";
+import {DAOFactory} from "../src/DAOFactory.sol";
 
 contract DeployAll is Script {
     function run() external {
-        uint256 privateKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(privateKey);
+        uint256 pk = vm.envUint("PRIVATE_KEY");
+        vm.startBroadcast(pk);
 
-        vm.startBroadcast(privateKey);
+        DAOFactory factory = new DAOFactory(5 minutes);
 
-        AlpyToken token = new AlpyToken();
-
-        AlpyStaking staking = new AlpyStaking(
-            address(token),
-            deployer,
-            deployer
-        );
-
-        AlpyDAO dao = new AlpyDAO(address(staking), 3 days);
-
-        LendingPool pool = new LendingPool(address(dao));
-
-        RewardDistributor distributor = new RewardDistributor(
-            address(token),
-            address(pool),
-            1e16
-        );
-
-        token.transferOwnership(address(dao));
-        staking.transferOwnership(address(dao));
-        distributor.transferOwnership(address(dao));
+        console2.log("AlpyToken:", factory.token());
+        console2.log("AlpyStaking:", factory.staking());
+        console2.log("AlpyDAO:", factory.dao());
+        console2.log("LendingPool:", factory.lending());
 
         vm.stopBroadcast();
     }

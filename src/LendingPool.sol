@@ -51,7 +51,8 @@ contract LendingPool {
     event Liquidated(
         address indexed borrower,
         address indexed liquidator,
-        address indexed token,
+        address indexed debtToken,
+        address collateralToken,
         uint256 repaid,
         uint256 collateralSeized
     );
@@ -65,7 +66,6 @@ contract LendingPool {
     error AlreadySupplied();
     error ExceedsLTV();
     error RepaymentTooHigh();
-    error Undercollateralized();
     error CollateralTooLow();
     error TransferFailed();
     error AlreadySupported();
@@ -99,7 +99,7 @@ contract LendingPool {
         emit Supplied(msg.sender, tokenAddr, amount);
     }
 
-    function withdraw(IERC20 token, uint256 amount, address user) external {
+    function withdraw(IERC20 token, uint256 amount) external {
         address tokenAddr = address(token);
         if (!isSupported[tokenAddr]) revert UnsupportedAsset();
         if (amount == 0) revert ZeroAmount();
@@ -114,16 +114,18 @@ contract LendingPool {
         uint256 price = getPrice(tokenAddr);
         uint256 withdrawUSD = (normalized * price) / 1e8;
 
-        if (withdrawUSD > getCollateralValueUSD(user)) revert ExceedsLTV();
+        if (withdrawUSD > getCollateralValueUSD(msg.sender))
+            revert ExceedsLTV();
 
         if (currentDebt > 0 && currentCollateral < amount) {
             revert InsufficientCollateral();
         }
 
-        uint256 newCollateralUSD = getCollateralValueUSD(user) - withdrawUSD;
+        uint256 newCollateralUSD = getCollateralValueUSD(msg.sender) -
+            withdrawUSD;
         uint256 maxBorrowable = (newCollateralUSD * ltv) / 1e18;
 
-        if (getDebtValueUSD(user) > maxBorrowable) revert ExceedsLTV();
+        if (getDebtValueUSD(msg.sender) > maxBorrowable) revert ExceedsLTV();
 
         collateral[msg.sender][tokenAddr] -= amount;
         assetData[tokenAddr].totalSupplied -= amount;
@@ -180,58 +182,65 @@ contract LendingPool {
     }
 
     function liquidate(
-        IERC20 token,
+        IERC20 debtToken,
+        IERC20 collateralToken,
         address user,
         uint256 repayAmount
     ) external {
-        address tokenAddr = address(token);
-        if (!isSupported[tokenAddr]) revert UnsupportedAsset();
+        address debtAddr = address(debtToken);
+        address collAddr = address(collateralToken);
+        if (!isSupported[debtAddr] || !isSupported[collAddr])
+            revert UnsupportedAsset();
         if (repayAmount == 0) revert ZeroAmount();
 
-        _accrueInterest(user, token);
+        _accrueInterest(user, debtToken);
 
-        uint256 currentDebt = debt[user][tokenAddr];
+        uint256 currentDebt = debt[user][debtAddr];
         if (currentDebt == 0) revert NoDebtToRepay();
 
         uint256 totalDebtUSD = getDebtValueUSD(user);
         uint256 collateralUSD = getCollateralValueUSD(user);
+        uint256 liquidationThreshold = (collateralUSD * ltv * 95) /
+            (100 * 1e18);
+        if (totalDebtUSD <= liquidationThreshold) revert NotLiquidatable();
 
-        uint256 maxBorrowable = (collateralUSD * ltv) / 1e18;
-        if (totalDebtUSD <= maxBorrowable) revert Undercollateralized();
-        if (totalDebtUSD <= (collateralUSD * ltv * 95) / (100 * 1e18)) {
-            revert NotLiquidatable();
-        }
-
-        uint8 repayDecimals = IERC20Metadata(tokenAddr).decimals();
+        uint8 repayDecimals = IERC20Metadata(debtAddr).decimals();
         uint256 repayNormalized = _changeDecimals(
             repayAmount,
             repayDecimals,
             18
         );
-        uint256 repayUSD = (repayNormalized * getPrice(tokenAddr)) / 1e8;
+        uint256 repayUSD = (repayNormalized * getPrice(debtAddr)) / 1e8;
         uint256 seizeUSD = (repayUSD * 110) / 100;
 
-        uint256 collateralPrice = getPrice(tokenAddr);
+        uint8 collDecimals = IERC20Metadata(collAddr).decimals();
+        uint256 collateralPrice = getPrice(collAddr);
         uint256 seizeAmountNormalized = (seizeUSD * 1e8) / collateralPrice;
         uint256 seizeAmount = _changeDecimals(
             seizeAmountNormalized,
             18,
-            repayDecimals
+            collDecimals
         );
 
-        if (collateral[user][tokenAddr] < seizeAmount)
-            revert CollateralTooLow();
+        if (collateral[user][collAddr] < seizeAmount) revert CollateralTooLow();
 
-        debt[user][tokenAddr] -= repayAmount;
-        assetData[tokenAddr].totalDebtToLPs -= repayAmount;
+        debt[user][debtAddr] -= repayAmount;
+        assetData[debtAddr].totalDebtToLPs -= repayAmount;
 
-        collateral[user][tokenAddr] -= seizeAmount;
-        assetData[tokenAddr].totalSupplied -= seizeAmount;
+        collateral[user][collAddr] -= seizeAmount;
+        assetData[collAddr].totalSupplied -= seizeAmount;
 
-        token.safeTransfer(msg.sender, seizeAmount);
-        token.safeTransferFrom(msg.sender, address(this), repayAmount);
+        collateralToken.safeTransfer(msg.sender, seizeAmount);
+        debtToken.safeTransferFrom(msg.sender, address(this), repayAmount);
 
-        emit Liquidated(user, msg.sender, tokenAddr, repayAmount, seizeAmount);
+        emit Liquidated(
+            user,
+            msg.sender,
+            debtAddr,
+            collAddr,
+            repayAmount,
+            seizeAmount
+        );
     }
 
     function accruedInterest(
