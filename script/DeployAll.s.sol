@@ -7,12 +7,11 @@ import {DAOFactory} from "../src/DAOFactory.sol";
 contract DeployAll is Script {
     function run() external {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        uint256 rewardRate = 1e18; // example reward rate
         uint256 votingPeriod = 3 days;
 
         vm.startBroadcast(deployerKey);
 
-        DAOFactory factory = new DAOFactory(rewardRate, votingPeriod);
+        DAOFactory factory = new DAOFactory(votingPeriod);
 
         address token = factory.token();
         address staking = factory.staking();
