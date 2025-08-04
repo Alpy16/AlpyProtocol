@@ -83,3 +83,35 @@
 - Slashed ALPY tokens are redirected to the DAO treasury
 - DAO/reviewer moderation powers are fully live
 - Voting system now includes both pre-checks and reactive controls
+
+
+## [1.6.0] – 2025-08-04
+
+### Added
+- Complete slashing system in `AlpyStaking`:
+  - 10% stake slash if staked, 20% wallet slash if unstaked
+  - Cooldown enforcement and exponential bans (7d, 14d, 28d...)
+  - Slash conditions: only executable by DAO or approved reviewers
+  - `Slashed` event for transparency and tracking
+
+- Liquidation system in `LendingPool`:
+  - Enforces liquidation if user's debt exceeds 95% of collateral LTV
+  - Seize value is 110% of repaid value, priced via Chainlink oracles
+  - Full normalization via `_changeDecimals()` for cross-asset compatibility
+
+- `DAOFactory` deployment module:
+  - Deploys and wires `AlpyToken`, `AlpyStaking`, `AlpyDAO`, and `LendingPool`
+  - DAO is assigned as owner of the pool
+
+### Improved
+- `slash()` logic simplified and documented with clean, readable comments
+- Internal bookkeeping improved across LendingPool and Staking
+- Audit of all test and script files for naming, usage, and accuracy
+- Rewrote README and CHANGELOG in standardized AlpyReadme format
+
+### Known Limitations
+- `RewardDistributor` lacks test coverage
+- DAO execution does not yet support queued governance actions
+- Staking contract ownership remains with factory post-deployment
+- Treasury reassignment must be handled manually after deployment
+
