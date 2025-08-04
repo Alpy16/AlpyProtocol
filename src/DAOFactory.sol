@@ -12,7 +12,7 @@ contract DAOFactory {
     address public dao;
     address public lending;
 
-    constructor(uint256 initialRewardRate, uint256 votingPeriod) {
+    constructor(uint256 votingPeriod) {
         AlpyToken _token = new AlpyToken();
         token = address(_token);
 

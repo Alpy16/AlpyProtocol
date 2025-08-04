@@ -22,7 +22,7 @@ contract AlpyDAOTest is Test {
     uint256 public constant VOTING_PERIOD = 3600;
 
     function setUp() public {
-        factory = new DAOFactory(1e18, VOTING_PERIOD);
+        factory = new DAOFactory(VOTING_PERIOD);
         token = AlpyToken(factory.token());
         staking = AlpyStaking(factory.staking());
         dao = AlpyDAO(factory.dao());
