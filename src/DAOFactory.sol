@@ -16,12 +16,19 @@ contract DAOFactory {
         AlpyToken _token = new AlpyToken();
         token = address(_token);
 
-        AlpyStaking _staking = new AlpyStaking(token);
+        // Deploy staking with this factory as temporary DAO/treasury holder
+        AlpyStaking _staking = new AlpyStaking(
+            token,
+            address(this),
+            address(this)
+        );
         staking = address(_staking);
 
+        // Deploy DAO pointing to staking for vote weight
         AlpyDAO _dao = new AlpyDAO(staking, votingPeriod);
         dao = address(_dao);
 
+        // Deploy lending pool governed by DAO
         LendingPool _lending = new LendingPool(dao);
         lending = address(_lending);
     }

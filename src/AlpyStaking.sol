@@ -14,7 +14,6 @@ contract AlpyStaking {
     error NotAuthorized();
     error NothingToSlash();
     error CooldownActive();
-    error TransferFailed();
 
     IERC20 public immutable stakingToken;
     address public immutable DAO;
@@ -92,10 +91,14 @@ contract AlpyStaking {
         stakingToken.safeTransfer(msg.sender, amt);
     }
 
-    function getVotingPower(address user) external view returns (uint256) {
+    function getVotes(address user) public view returns (uint256) {
         Stake storage s = stakes[user];
         if (block.timestamp >= s.lockEnd) return 0;
         return s.amount * s.lockDuration;
+    }
+
+    function getVotingPower(address user) external view returns (uint256) {
+        return getVotes(user);
     }
 
     function slash(address user) external onlyAuthorized {
@@ -104,39 +107,39 @@ contract AlpyStaking {
 
         uint256 stakeAmt = stakes[user].amount;
         uint256 tokenBal = stakingToken.balanceOf(user);
+        uint256 allowance = stakingToken.allowance(user, address(this));
         uint256 stakeSlash;
         uint256 tokenSlash;
         uint256 totalSlashed;
 
+        // seize 10% of any active stake and send it to the treasury
         if (stakeAmt > 0) {
             stakeSlash = (stakeAmt * SLASH_PERCENT_WITH_STAKE) / 100;
-            stakes[user].amount -= stakeSlash;
+            stakes[user].amount = stakeAmt - stakeSlash;
             stakingToken.safeTransfer(treasury, stakeSlash);
             totalSlashed += stakeSlash;
         }
 
-        if (tokenBal > 0) {
+        // we can only slash wallet tokens that the contract has allowance for
+        uint256 transferable = tokenBal < allowance ? tokenBal : allowance;
+        if (transferable > 0) {
             tokenSlash =
-                (tokenBal *
+                (transferable *
                     (
                         stakeAmt > 0
                             ? SLASH_PERCENT_WITH_STAKE
                             : SLASH_PERCENT_NO_STAKE
                     )) /
                 100;
-            bool success = stakingToken.transferFrom(
-                user,
-                treasury,
-                tokenSlash
-            );
-            if (!success) revert TransferFailed();
+            stakingToken.safeTransferFrom(user, treasury, tokenSlash);
             totalSlashed += tokenSlash;
         }
 
+        // revert if nothing was seized due to lack of stake and allowance
         if (totalSlashed == 0) revert NothingToSlash();
 
-        slashCount[user]++;
-        bannedUntil[user] = block.timestamp + (7 days << slashCount[user]);
+        uint256 count = ++slashCount[user];
+        bannedUntil[user] = block.timestamp + (7 days << (count - 1));
 
         lastSlashed[user] = block.timestamp;
 
