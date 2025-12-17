@@ -5,8 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## About
-
-AlpyProtocol is a modular, DAO-governed DeFi system that integrates time-locked staking, decentralized governance, collateralized lending, and reward emissions. It is written in Solidity and tested using the Foundry framework. The protocol prioritizes clarity, composability, and governance-driven control.
+AlpyProtocol, a modular, DAO-governed DeFi system integrating time-locked staking, on-chain governance, collateralized lending, and reward emissions
 
 ## Features
 
